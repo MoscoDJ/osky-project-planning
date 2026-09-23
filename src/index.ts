@@ -1,0 +1,12 @@
+export { DebateEngine, EngineError, ExternalEditError, computeIdentity, checkMarkdown } from "./core/engine.js";
+export { loadConfig, createRegistry, DEFAULT_CONFIG, FAKE_MODELS, type AppConfig } from "./core/config.js";
+export { Registry } from "./core/adapters/registry.js";
+export { FakeAdapter, type FakeBehavior } from "./core/adapters/fake.js";
+export { ClaudeAdapter } from "./core/adapters/claude.js";
+export { CodexAdapter } from "./core/adapters/codex.js";
+export { GeminiAdapter } from "./core/adapters/gemini.js";
+export { KimiAdapter } from "./core/adapters/kimi.js";
+export type { Adapter, AdapterRegistry, TurnRequest, TurnResult } from "./core/adapters/types.js";
+export { ACTA_SCHEMA, validateActa, renderActa } from "./core/schema.js";
+export * from "./core/types.js";
+export * as prompts from "./core/prompts.js";
