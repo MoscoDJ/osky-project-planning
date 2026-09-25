@@ -221,6 +221,35 @@ describe("flujo del debate", () => {
     expect(engine.state.turns.slice(6).map((t) => t.participant)).toEqual(["A", "B"]);
   });
 
+  it("cancelar interrumpe el turno sin reintento ni sustituto", async () => {
+    const { registry } = make({ "fake-a": { delayMs: 400 } });
+    const engine = await DebateEngine.create(opts(), registry);
+    const p = engine.next();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(engine.busy).toMatch(/Turno 1/);
+    engine.cancel();
+    const t = await p;
+    expect(t.status).toBe("failed");
+    expect(t.attempts).toHaveLength(1);
+    expect(t.error).toMatch(/cancelado/);
+    expect(engine.state.nextAction).toMatch(/cancelado/i);
+    expect(engine.busy).toBeNull();
+    const t2 = await engine.retry();
+    expect(t2.status).toBe("published");
+  });
+
+  it("pausar detiene run al terminar el turno en curso", async () => {
+    const { registry } = make({ "fake-a": { delayMs: 100 }, "fake-b": { delayMs: 100 } });
+    const engine = await DebateEngine.create(opts(), registry);
+    const p = engine.run();
+    await new Promise((r) => setTimeout(r, 30));
+    engine.pause();
+    await p;
+    expect(engine.state.turns.filter((t) => t.status === "published")).toHaveLength(1);
+    await engine.run();
+    expect(engine.state.phase).toBe("awaiting_user");
+  });
+
   it("un lock de otro proceso vivo impide ejecutar turnos", async () => {
     const { registry } = make();
     const engine = await DebateEngine.create(opts(), registry);

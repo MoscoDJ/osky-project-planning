@@ -41,7 +41,20 @@ export class FakeAdapter implements Adapter {
     const b = this.behavior(req.spec.model);
     this.calls.push({ model: req.spec.model, turn: req.turnNumber, role: req.role, resumed: !!req.sessionId });
     onEvent({ type: "status", text: `fake(${req.spec.model}) turno ${req.turnNumber}` });
-    if (b.delayMs) await new Promise((r) => setTimeout(r, b.delayMs));
+    if (b.delayMs) {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, b.delayMs);
+        req.signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(t);
+            resolve();
+          },
+          { once: true },
+        );
+      });
+      if (req.signal?.aborted) return { ok: false, error: "abortado", modelsReported: [], text: "" };
+    }
 
     const failed = this.failCounters.get(req.spec.model) ?? 0;
     if ((b.failTimes ?? 0) > failed) {

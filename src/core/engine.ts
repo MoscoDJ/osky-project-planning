@@ -17,7 +17,7 @@ import type {
 import type { Adapter, AdapterRegistry, TurnRequest, TurnResult } from "./adapters/types.js";
 import { ACTA_SCHEMA, hasBlockingQuestion, validateActa } from "./schema.js";
 import { Git } from "./git.js";
-import { appendText, atomicWrite, exists, nowIso, readText, slugify } from "./fsutil.js";
+import { appendText, atomicWrite, execCmd, exists, nowIso, readText, slugify } from "./fsutil.js";
 import {
   BRIEF_FILE,
   CANDIDATE_FILE,
@@ -49,6 +49,11 @@ type Outcome = "published" | "paused" | "failed";
 
 export class DebateEngine {
   private listeners = new Set<(e: EngineEvent) => void>();
+  private pauseRequested = false;
+  private cancelRequested = false;
+  private abortController?: AbortController;
+  /** Descripción de la operación en curso, o null. */
+  public busy: string | null = null;
 
   private constructor(
     public readonly workspace: string,
@@ -143,6 +148,13 @@ export class DebateEngine {
     const file = path.join(ws, STATE_FILE);
     if (!(await exists(file))) throw new EngineError(`No hay ${STATE_FILE} en ${ws}`);
     const state = JSON.parse(await readText(file)) as DebateState;
+    // Migración de estados creados por versiones anteriores del motor.
+    state.config.cycleOrder ??= "global";
+    state.abbreviated ??= false;
+    state.clarifications ??= [];
+    state.consolidationHistory ??= [];
+    state.cycles ??= [];
+    state.decisions ??= [];
     const engine = new DebateEngine(path.resolve(ws), state, registry);
     // Un turno que quedó "running" es un proceso interrumpido: se trata como fallido.
     for (const t of state.turns) {
@@ -245,11 +257,13 @@ export class DebateEngine {
     }
 
     // Intentos con el modelo propio: hasta dos (primer intento + reintento).
+    this.cancelRequested = false;
     let outcome: Outcome = "failed";
     let tries = opts.force ? 1 : 2 - ownAttempts;
     while (tries > 0 && canOwn) {
       outcome = await this.executeTurn(turn, own);
       if (outcome !== "failed") return turn;
+      if (this.cancelRequested) return this.afterCancel(turn);
       tries--;
     }
     if (canSub) {
@@ -257,14 +271,34 @@ export class DebateEngine {
       this.emit({ type: "log", level: "warn", message: `Turno ${turn.number}: ${own.label} falló dos veces; entra ${sub.label} como sustituto temporal.` });
       outcome = await this.executeTurn(turn, sub);
       if (outcome !== "failed") return turn;
+      if (this.cancelRequested) return this.afterCancel(turn);
     }
     this.setNext("El turno falló tras reintento y sustitución. Usa `retry` o `skip`.");
     await this.save();
     return turn;
   }
 
+  private async afterCancel(turn: TurnRecord): Promise<TurnRecord> {
+    this.setNext("Turno cancelado por el usuario. Usa `retry` para repetirlo o `skip` para saltarlo.");
+    await this.save();
+    return turn;
+  }
+
+  /** Pide detener `run` al terminar el turno en curso. */
+  pause(): void {
+    this.pauseRequested = true;
+  }
+
+  /** Interrumpe el turno en curso: no cuenta como intervención y no dispara reintento ni sustituto. */
+  cancel(): void {
+    this.cancelRequested = true;
+    this.pauseRequested = true;
+    this.abortController?.abort();
+  }
+
   /** Ejecuta turnos hasta que haga falta el usuario o algo falle. */
   async run(): Promise<void> {
+    this.pauseRequested = false;
     for (;;) {
       const s = this.state;
       if (s.phase !== "initial" && s.phase !== "user_cycle") return;
@@ -275,6 +309,7 @@ export class DebateEngine {
       const done = await this.next();
       if (done.status !== "published" && done.status !== "skipped") return;
       if (done.attempts.length === before) return;
+      if (this.pauseRequested) return;
     }
   }
 
@@ -346,9 +381,13 @@ export class DebateEngine {
 
   private async executeTurn(turn: TurnRecord, spec: ModelSpec, resume?: { answer: string }): Promise<Outcome> {
     await this.acquireLock();
+    this.abortController = new AbortController();
+    this.busy = `Turno ${turn.number} · Participante ${turn.participant} · ${spec.label}`;
     try {
       return await this.executeTurnUnlocked(turn, spec, resume);
     } finally {
+      this.busy = null;
+      this.abortController = undefined;
       await this.releaseLock();
     }
   }
@@ -409,6 +448,7 @@ export class DebateEngine {
       logFile: path.join(ws, attempt.logFile),
       timeoutMs: s.config.turnTimeoutMs,
       turnNumber: turn.number,
+      signal: this.abortController?.signal,
     };
 
     let result: TurnResult;
@@ -418,6 +458,9 @@ export class DebateEngine {
       result = { ok: false, error: `excepción del adaptador: ${err?.message ?? err}`, modelsReported: [], text: "" };
     }
     attempt.finishedAt = nowIso();
+    if (this.cancelRequested) {
+      result = { ...result, ok: false, error: "cancelado por el usuario" };
+    }
 
     if (own && result.sessionId && adapter.supportsResume) {
       s.participants[turn.participant].sessionId = result.sessionId;
@@ -648,9 +691,14 @@ export class DebateEngine {
 
   async consolidate(which: "primary" | "alt" = "primary"): Promise<CandidateInfo> {
     await this.acquireLock();
+    this.abortController = new AbortController();
+    this.cancelRequested = false;
+    this.busy = `Consolidación · ${which === "alt" ? this.state.config.consolidatorAlt.label : this.state.config.consolidator.label}`;
     try {
       return await this.consolidateUnlocked(which);
     } finally {
+      this.busy = null;
+      this.abortController = undefined;
       await this.releaseLock();
     }
   }
@@ -713,6 +761,7 @@ export class DebateEngine {
       logFile: path.join(ws, info.logFile!),
       timeoutMs: s.config.turnTimeoutMs,
       turnNumber: 0,
+      signal: this.abortController?.signal,
     };
 
     let result: TurnResult;
@@ -736,6 +785,7 @@ export class DebateEngine {
       return info;
     };
 
+    if (this.cancelRequested) return failCandidate("cancelada por el usuario");
     if (!result.ok) return failCandidate(result.error ?? "error desconocido");
     const identity = computeIdentity(spec.model, result.modelsReported);
     if (identity === "mismatch") return failCandidate(`identidad no confirmada: respondió ${result.modelsReported.join(", ")}`);
@@ -764,9 +814,7 @@ export class DebateEngine {
 
   async candidateDiff(): Promise<string> {
     if (this.state.phase !== "candidate_ready") throw new EngineError("No hay candidato de consolidación.");
-    const r = await import("./fsutil.js").then((m) =>
-      m.execCmd("git", ["diff", "--no-color", "--no-index", "--", PLAN_FILE, CANDIDATE_FILE], { cwd: this.workspace }),
-    );
+    const r = await execCmd("git", ["diff", "--no-color", "--no-index", "--", PLAN_FILE, CANDIDATE_FILE], { cwd: this.workspace });
     return r.stdout;
   }
 

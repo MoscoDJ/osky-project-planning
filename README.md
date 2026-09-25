@@ -6,8 +6,33 @@ y revisan un mismo `plan.md` por turnos; Gemini 3.1 Pro consolida al cierre; Kim
 el sustituto temporal cuando un modelo falla. El diseño completo está en
 `nuevo_plan_claude.md`.
 
-Este paquete cubre las etapas 1 y 2 del plan: motor, adaptadores y uso desde terminal.
-La interfaz Electron (etapa 3) importará `src/index.ts`.
+Este paquete cubre las etapas 1 a 3 del plan: motor, adaptadores, CLI de terminal y la
+app de escritorio (Electron + React) en `app/`.
+
+## App de escritorio
+
+```bash
+pnpm dev            # ventana en modo desarrollo con recarga
+pnpm build:app      # compila a out/ (main, preload y renderer)
+pnpm dist           # AppImage y .deb en release/
+```
+
+La ventana tiene tres zonas: debates a la izquierda, plan en vivo al centro (con diff
+por turno y diff del candidato de consolidación) y debate a la derecha (turnos con acta,
+streaming del turno en curso). Arriba están los controles de turno (Iniciar, Un turno,
+Pausar, Cancelar, Reintentar, Saltar, Finalizar, Consolidar, Aceptar, Descartar) y abajo la
+caja para observaciones, respuestas a preguntas bloqueantes y decisiones.
+
+Instalación standalone: `sudo dpkg -i release/*.deb` deja "Osky Debate" en el menú de KDE,
+o ejecuta directamente `release/*.AppImage`. Sin root: `scripts/install-user.sh` copia el
+AppImage a `~/Applications`, extrae el icono y crea la entrada del menú en
+`~/.local/share/applications`. La app detecta `claude`, `codex` y `gemini`
+aunque el menú de KDE no herede el PATH de la terminal (busca en `~/.local/bin` y en la
+versión de Node más reciente de NVM).
+
+Nota: si lanzas Electron desde una terminal integrada de VS Code, esa terminal define
+`ELECTRON_RUN_AS_NODE=1` y Electron arranca como Node puro. Usa una terminal normal o
+`env -u ELECTRON_RUN_AS_NODE pnpm dev`.
 
 ## Requisitos
 
@@ -97,5 +122,8 @@ src/core/git.ts         helpers de git
 src/core/adapters/      claude, codex, gemini, kimi (HTTP), fake (pruebas)
 src/core/config.ts      configuración y registro de adaptadores
 src/cli/index.ts        comandos de terminal
+app/main/               proceso principal de Electron: IPC, vigilancia de plan.md, PATH
+app/preload/            puente seguro (contextBridge)
+app/renderer/           React: TopBar, Sidebar, PlanPanel, DebatePanel, NewDebateModal
 test/engine.test.ts     suite con FakeAdapter
 ```

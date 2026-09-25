@@ -617,12 +617,21 @@ por reestructuración. Hallazgos corregidos durante la validación: `--search` d
 global y va antes de `exec`; Kimi necesita el schema del acta en el prompt; la marca de
 sustituto describe el intento publicado, no la historia del turno.
 
+**Etapa 3 implementada (23-sep-2026):** app Electron + React en `app/`, con las tres
+zonas de la sección 7, controles de turno, streaming del turno activo, diff por turno y
+del candidato, caja de observaciones y decisiones, diálogo de nuevo debate, lista de
+debates, vigilancia de `plan.md` en disco y detección del PATH de los CLIs desde KDE.
+El motor ganó `pause()` y `cancel()` (la cancelación aborta el proceso del CLI, no cuenta
+como intervención y no dispara reintento ni sustituto). Empaquetado con electron-builder
+como AppImage y .deb (`pnpm dist`).
+
 Pendientes:
 
-1. Etapa 3: interfaz Electron sobre `src/index.ts`.
+1. Validar la app instalada en KDE/Wayland con un debate real completo (etapa 5).
 2. Forzar y observar una sustitución de modelo en Claude para calibrar el detector.
-3. Probar cancelación a mitad de turno en los tres CLIs y agotamiento de cuota.
-4. Empaquetado (.deb o AppImage) y validación en KDE/Wayland (etapas 4 y 5).
+3. Probar agotamiento de cuota y fallos de red con los CLIs reales.
+4. Restaurar una versión anterior desde la interfaz y registro de decisiones con estados
+   (funciones de interfaz postergadas en 14b).
 
 Los cuatro modelos (Fable 5.1, GPT-6 Astra, Gemini 3.1 Pro y Kimi K3) quedaron
 verificados con llamadas reales el 23-sep-2026.
