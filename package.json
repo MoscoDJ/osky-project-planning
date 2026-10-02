@@ -75,7 +75,7 @@
           "StartupWMClass": "osky-project-planning"
         }
       },
-      "icon": "build/icon.png",
+      "icon": "build/icons",
       "synopsis": "Debate de planeación de proyectos entre modelos de IA"
     },
     "npmRebuild": false,

@@ -20,22 +20,27 @@ target="$apps_dir/osky-project-planning.AppImage"
 install -m 755 "$src" "$target"
 echo "AppImage: $target"
 
-# Icono: se extrae del propio AppImage.
+# Iconos: se extraen del propio AppImage y se instalan en cada tamaño estándar de hicolor
+# (16 a 512 px). Los temas de icono no definen 1024x1024, así que ese tamaño no se usa.
+hicolor="$HOME/.local/share/icons/hicolor"
 tmp="$(mktemp -d)"
 ( cd "$tmp" && "$target" --appimage-extract 'usr/share/icons/*' >/dev/null 2>&1 || true )
-( cd "$tmp" && "$target" --appimage-extract '*.png' >/dev/null 2>&1 || true )
-png="$(find "$tmp/squashfs-root/usr/share/icons" -type f -name '*.png' 2>/dev/null | sort -V | tail -1 || true)"
-[ -z "$png" ] && png="$(find "$tmp/squashfs-root" -maxdepth 1 -type f -name '*.png' 2>/dev/null | head -1 || true)"
-if [ -n "$png" ]; then
-  # Se instala en la carpeta de su tamaño real (p. ej. hicolor/1024x1024/apps).
+installed=0
+while IFS= read -r png; do
   size="$(basename "$(dirname "$(dirname "$png")")")"
-  case "$size" in *x*) icon_dir="$HOME/.local/share/icons/hicolor/$size/apps" ;; esac
-  mkdir -p "$icon_dir"
-  rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/osky-project-planning.png"
-  cp "$png" "$icon_dir/osky-project-planning.png"
-  echo "Icono: $icon_dir/osky-project-planning.png"
+  case "$size" in
+    16x16|24x24|32x32|48x48|64x64|128x128|256x256|512x512)
+      mkdir -p "$hicolor/$size/apps"
+      cp "$png" "$hicolor/$size/apps/osky-project-planning.png"
+      installed=$((installed + 1))
+      ;;
+  esac
+done < <(find "$tmp/squashfs-root/usr/share/icons" -type f -name '*.png' 2>/dev/null)
+rm -f "$hicolor/1024x1024/apps/osky-project-planning.png"
+if [ "$installed" -gt 0 ]; then
+  echo "Iconos: $installed tamaños en $hicolor"
 else
-  echo "Aviso: no se encontró icono dentro del AppImage; se usará el genérico."
+  echo "Aviso: no se encontraron iconos dentro del AppImage; se usará el genérico."
 fi
 rm -rf "$tmp"
 
