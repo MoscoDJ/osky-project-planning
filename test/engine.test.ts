@@ -16,7 +16,7 @@ beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "osky-debate-"));
 });
 afterEach(async () => {
-  await fs.rm(root, { recursive: true, force: true });
+  await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
 function opts(over: Partial<NewDebateOptions> = {}): NewDebateOptions {
