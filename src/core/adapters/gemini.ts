@@ -1,9 +1,10 @@
 import type { AdapterEvent } from "../types.js";
 import { execCmd, extractJson, safeJsonParse } from "../fsutil.js";
-import { rawLogger, tail, type Adapter, type TurnRequest, type TurnResult } from "./types.js";
+import { envSecrets, rawLogger, tail, type Adapter, type SecretResolver, type TurnRequest, type TurnResult } from "./types.js";
 
 export interface GeminiAdapterOptions {
   binary?: string;
+  secrets?: SecretResolver;
 }
 
 /**
@@ -18,9 +19,11 @@ export class GeminiAdapter implements Adapter {
   readonly editsFiles = true;
   readonly supportsResume = true;
   private binary: string;
+  private secrets: SecretResolver;
 
   constructor(opts: GeminiAdapterOptions = {}) {
     this.binary = opts.binary ?? "gemini";
+    this.secrets = opts.secrets ?? envSecrets;
   }
 
   async runTurn(req: TurnRequest, onEvent: (e: AdapterEvent) => void): Promise<TurnResult> {
@@ -39,6 +42,13 @@ export class GeminiAdapter implements Adapter {
     if (req.sessionId) args.push("-r", req.sessionId);
     for (const d of req.contextDirs) args.push("--include-directories", d);
 
+    // Gemini CLI dejó de aceptar login con cuenta de Google para cuentas individuales
+    // (18-jun-2026): se usa con GEMINI_API_KEY. Si la app tiene la clave, se inyecta;
+    // si no, el CLI usa la de ~/.gemini/.env.
+    const env = { ...process.env };
+    const key = this.secrets("GEMINI_API_KEY");
+    if (key) env.GEMINI_API_KEY = key;
+
     let sessionId = req.sessionId;
     let text = "";
     let status: string | undefined;
@@ -48,6 +58,7 @@ export class GeminiAdapter implements Adapter {
     onEvent({ type: "status", text: `gemini ${req.sessionId ? "resume" : "nueva sesión"}` });
     const r = await execCmd(this.binary, args, {
       cwd: req.workspace,
+      env,
       input: req.prompt,
       timeoutMs: req.timeoutMs,
       signal: req.signal,

@@ -123,7 +123,7 @@ function TurnCard({ turn, label, stream, active }: { turn: TurnRecord; label: st
     <div className={`turn ${active ? "active" : ""}`}>
       <div className="head" onClick={() => setOpen((o) => !o)}>
         <span className="num">#{turn.number}</span>
-        <span className={turn.participant === "A" ? "pA" : "pB"}>Participante {turn.participant}</span>
+        <span className={`p${turn.participant}`}>Participante {turn.participant}</span>
         <span className="muted">{label}</span>
         {turn.substitute && <span className="badge warn">sustituto {turn.substitute}</span>}
         <span className={`badge ${st.cls}`}>{st.label}</span>
@@ -179,7 +179,7 @@ export function DebatePanel({ snap, stream, busy }: { snap: Snapshot; stream: St
       <div className="panel-head">
         <h2>Debate</h2>
         <span className="small muted">
-          Abre <span className={s.opener === "A" ? "pA" : "pB"}>{s.opener}</span> · {s.config.rounds} rondas · web {s.config.allowWeb ? "sí" : "no"} · ciclos{" "}
+          Orden {(s.order ?? [s.opener]).join(" → ")} · {s.config.rounds} rondas · web {s.config.allowWeb ? "sí" : "no"} · ciclos{" "}
           {s.config.cycleOrder ?? "global"}
         </span>
       </div>

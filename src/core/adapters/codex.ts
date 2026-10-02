@@ -2,10 +2,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { AdapterEvent } from "../types.js";
 import { execCmd, extractJson, safeJsonParse } from "../fsutil.js";
-import { rawLogger, tail, type Adapter, type TurnRequest, type TurnResult } from "./types.js";
+import { envSecrets, rawLogger, tail, type Adapter, type SecretResolver, type TurnRequest, type TurnResult } from "./types.js";
 
 export interface CodexAdapterOptions {
   binary?: string;
+  secrets?: SecretResolver;
 }
 
 /**
@@ -20,9 +21,11 @@ export class CodexAdapter implements Adapter {
   readonly editsFiles = true;
   readonly supportsResume = true;
   private binary: string;
+  private secrets: SecretResolver;
 
   constructor(opts: CodexAdapterOptions = {}) {
     this.binary = opts.binary ?? "codex";
+    this.secrets = opts.secrets ?? envSecrets;
   }
 
   async runTurn(req: TurnRequest, onEvent: (e: AdapterEvent) => void): Promise<TurnResult> {
@@ -75,6 +78,16 @@ export class CodexAdapter implements Adapter {
       args.push("-");
     }
 
+    // Modo clave: CODEX_API_KEY vale solo para `codex exec` y no toca el login guardado.
+    const env = { ...process.env };
+    if (req.spec.access === "cli-key") {
+      const key = this.secrets("OPENAI_API_KEY");
+      if (!key) return { ok: false, error: "falta la clave de la API de OpenAI (OPENAI_API_KEY) para Codex", modelsReported: [], text: "" };
+      env.CODEX_API_KEY = key;
+    } else {
+      delete env.CODEX_API_KEY;
+    }
+
     let sessionId = req.sessionId;
     let lastMessage = "";
     let usage: unknown;
@@ -83,6 +96,7 @@ export class CodexAdapter implements Adapter {
     onEvent({ type: "status", text: `codex ${req.sessionId ? "resume" : "nueva sesión"}` });
     const r = await execCmd(this.binary, args, {
       cwd: req.workspace,
+      env,
       input: req.prompt,
       timeoutMs: req.timeoutMs,
       signal: req.signal,

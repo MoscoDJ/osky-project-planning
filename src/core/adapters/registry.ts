@@ -14,7 +14,7 @@ export class Registry implements AdapterRegistry {
   }
 
   get(spec: ModelSpec): Adapter {
-    const a = this.adapters.get(spec.adapter);
+    const a = this.adapters.get(spec.adapter === "kimi" ? "openai-compat" : spec.adapter);
     if (!a) throw new Error(`No hay adaptador registrado para "${spec.adapter}" (modelo ${spec.model})`);
     return a;
   }

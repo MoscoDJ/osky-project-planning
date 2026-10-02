@@ -1,49 +1,88 @@
-# osky-debate
+# Osky Project Planning
 
-Motor y CLI del sistema de debate de planeación entre IAs. Dos participantes (Claude
-Fable 5.1 vía Claude Code y GPT-6 Astra vía Codex CLI, ambos con suscripción) construyen
-y revisan un mismo `plan.md` por turnos; Gemini 3.1 Pro consolida al cierre; Kimi K3 es
-el sustituto temporal cuando un modelo falla. El diseño completo está en
-`nuevo_plan_claude.md`.
+Debate de planeación de proyectos entre modelos de IA de frontera. De dos a diez
+participantes construyen y revisan un mismo `plan.md` por turnos rotativos; un modelo
+distinto consolida al cierre como candidato revisable; un sustituto cubre el turno de un
+modelo que falla. El diseño está en `nuevo_plan_claude.md`.
 
-Este paquete cubre las etapas 1 a 3 del plan: motor, adaptadores, CLI de terminal y la
-app de escritorio (Electron + React) en `app/`.
+## Modelos y proveedores
+
+Cada participante es un modelo del catálogo de frontera más una **vía de acceso**:
+
+| Vía | Cómo se usa | Herramientas |
+|---|---|---|
+| CLI con login | Claude Code (suscripción Claude) o Codex (suscripción ChatGPT) | Edita el plan, búsqueda web, lee carpetas de contexto |
+| CLI con clave | Claude Code, Codex o Gemini CLI con clave de API | Igual que arriba, facturado a la API |
+| API | Anthropic (SDK oficial), OpenAI, Google, xAI, Moonshot, DeepSeek, Alibaba, Z.ai, OpenRouter, DigitalOcean, Replicate | Recibe el plan en el mensaje y lo devuelve completo |
+
+Catálogo (solo topes de gama, verificado el 2-oct-2026): Claude Fable 5.1, Claude Opus 5.5,
+GPT-6 Astra, Gemini 3.1 Pro, Grok 4.7, Kimi K3, DeepSeek V4 Pro, Qwen3.8 Max y GLM-5.3. Cada
+uno lista sus vías disponibles (`osky-planning models`). En la app hay además "Otro modelo"
+para escribir un id a mano cuando salga un modelo nuevo.
+
+Notas de acceso:
+- Gemini CLI ya no acepta login de cuentas personales de Google desde el 18-jun-2026; se usa
+  con `GEMINI_API_KEY`. La app también lee la clave de `~/.gemini/.env`.
+- Claude Fable 5.1 en Claude Code con login: en Pro solo con créditos de uso; en Max y en
+  asientos premium de Team, incluido hasta el 50% del límite semanal.
+- Codex con clave usa `CODEX_API_KEY` solo para `codex exec`; no toca el login guardado.
+- Usar CLIs de suscripción desde una app propia puede chocar con los términos de consumo de
+  cada proveedor; revísalos antes de distribuir.
+
+Las claves se guardan en `secrets.env` dentro de la carpeta de configuración, con permisos
+solo para el usuario: `~/.config/osky-project-planning` en Linux,
+`~/Library/Application Support/osky-project-planning` en macOS y
+`%APPDATA%\osky-project-planning` en Windows. La configuración de la versión anterior
+(`~/.config/osky-debate`) se migra sola.
 
 ## App de escritorio
 
 ```bash
 pnpm dev            # ventana en modo desarrollo con recarga
 pnpm build:app      # compila a out/ (main, preload y renderer)
-pnpm dist           # AppImage y .deb en release/
+pnpm dist           # Linux: AppImage y .deb en release/
+pnpm dist:mac       # macOS: .dmg y .zip (ejecutar en una Mac)
+pnpm dist:win       # Windows: instalador NSIS (ejecutar en Windows)
 ```
 
 La ventana tiene tres zonas: debates a la izquierda, plan en vivo al centro (con diff
 por turno y diff del candidato de consolidación) y debate a la derecha (turnos con acta,
-streaming del turno en curso). Arriba están los controles de turno (Iniciar, Un turno,
-Pausar, Cancelar, Reintentar, Saltar, Finalizar, Consolidar, Aceptar, Descartar) y abajo la
-caja para observaciones, respuestas a preguntas bloqueantes y decisiones.
+streaming del turno en curso). Arriba están los participantes en orden de palabra y los
+controles de turno; abajo la caja para observaciones, respuestas a preguntas bloqueantes y
+decisiones. **Ajustes** tiene dos pestañas: modelos por defecto (participantes,
+consolidador, alterno, sustituto) y proveedores y claves (estado de cada CLI, inicio de
+sesión en una terminal, guardar, probar y borrar claves).
 
-Instalación standalone: `sudo dpkg -i release/*.deb` deja "Osky Debate" en el menú de KDE,
-o ejecuta directamente `release/*.AppImage`. Sin root: `scripts/install-user.sh` copia el
-AppImage a `~/Applications`, extrae el icono y crea la entrada del menú en
-`~/.local/share/applications`. La app detecta `claude`, `codex` y `gemini`
-aunque el menú de KDE no herede el PATH de la terminal (busca en `~/.local/bin` y en la
-versión de Node más reciente de NVM).
+Instalación en Linux: `sudo dpkg -i release/*.deb`, o sin root `scripts/install-user.sh`,
+que copia el AppImage a `~/Applications`, crea la entrada del menú y retira la instalación
+anterior con el nombre viejo. La app detecta los CLIs aunque el menú del escritorio no
+herede el PATH de la terminal (`~/.local/bin`, NVM, Homebrew en macOS, npm global en
+Windows).
 
 Nota: si lanzas Electron desde una terminal integrada de VS Code, esa terminal define
 `ELECTRON_RUN_AS_NODE=1` y Electron arranca como Node puro. Usa una terminal normal o
 `env -u ELECTRON_RUN_AS_NODE pnpm dev`.
 
+## Versiones y releases
+
+Las versiones usan el formato `AAAA.M.D.N`: fecha de la compilación y número de compilación
+del día. `2026.10.2.1` es la primera del 2 de octubre de 2026.
+
+```bash
+pnpm release                # etiqueta la siguiente compilación de hoy y la empuja
+pnpm release 2026.10.2.3    # versión explícita
+```
+
+Al empujar la etiqueta `vAAAA.M.D.N`, GitHub Actions (`.github/workflows/release.yml`)
+compila en Linux, macOS y Windows, corre las pruebas en los tres sistemas y publica un
+Release con AppImage, `.deb`, `.dmg` para Apple Silicon e Intel, y el instalador `.exe`.
+Por ahora macOS lleva firma ad-hoc sin notarizar y Windows va sin firma; las notas del
+release explican cómo abrirlos la primera vez.
+
 ## Requisitos
 
-- Node 22+ y pnpm.
-- `claude` (Claude Code) con login de suscripción, `codex` con login ChatGPT, `gemini`
-  con clave de API en `~/.gemini/.env`.
-- Clave de DigitalOcean para Kimi K3 en `~/.config/osky-debate/secrets.env`:
-  `DO_INFERENCE_API_KEY=...` (permisos 600). Nunca va en el repo ni en los planes.
-- Opcional: `~/.config/osky-debate/config.json` para cambiar modelos, rutas de los CLIs,
-  carpeta de debates, timeout o umbral de cambio. Cualquier campo de `DEFAULT_CONFIG`
-  en `src/core/config.ts` se puede sobrescribir.
+- Node 22+, pnpm y git.
+- Los CLIs que vayas a usar (`claude`, `codex`, `gemini`) y las claves de las APIs elegidas.
 
 ```bash
 pnpm install
@@ -54,12 +93,17 @@ pnpm typecheck
 ## Uso
 
 ```bash
-alias debate='node_modules/.bin/tsx src/cli/index.ts'   # o pnpm build && ./bin/debate.js
+alias debate='node_modules/.bin/tsx src/cli/index.ts'   # o pnpm build && ./bin/osky-planning.js
 
-# Crear un debate (sorteo de quién abre; --start A|B lo fija)
+debate models                      # catálogo y vías, con estado de claves
+debate providers                   # proveedores y claves configuradas
+debate key OPENROUTER_API_KEY      # guarda una clave (la lee de stdin)
+
+# Crear un debate (sorteo del orden; --start B fija quién abre)
 debate new "Mi proyecto" --brief-file peticion.md --rounds 3 --decision "Todo en español"
+debate new "Mi proyecto" --brief "..." -m claude-fable-5.1@anthropic:api gpt-6-astra@codex:cli-login grok-4.7@openrouter:api
 debate new "Mi proyecto" --brief "..." --cycle-order alternate   # alterna quién abre cada ciclo
-debate new "Prueba" --brief "..." --fake --run      # simulado, sin cuota
+debate new "Prueba" --brief "..." --fake --participants 3 --run      # simulado, sin cuota
 
 # Fase inicial y ciclos
 debate run  <workspace>            # ejecuta turnos hasta que haga falta el usuario
@@ -97,7 +141,7 @@ debate accept <workspace> · debate discard <workspace>
 - Turnos estrictamente secuenciales; un turno solo se publica si el modelo efectivo es el
   autorizado, el acta valida contra el schema, solo cambió `plan.md`, el Markdown conserva
   la plantilla y partió de la versión vigente. Si algo falla, `git` restaura el plan.
-- Fallo → un reintento con el mismo modelo → Kimi K3 cubre el turno, marcado como
+- Fallo → un reintento con el mismo modelo → el sustituto configurado (Kimi K3 por defecto) cubre el turno, marcado como
   sustituto; el modelo original vuelve en su siguiente turno.
 - Pregunta bloqueante → el turno se pausa; la respuesta del usuario lo continúa en la
   misma sesión sin consumir intervención.
@@ -119,11 +163,14 @@ src/core/schema.ts      JSON Schema del acta + validación (ajv) + render
 src/core/prompts.ts     protocolo, anexos por CLI, paquete del turno, consolidación
 src/core/engine.ts      máquina de estados, validaciones, publicación, git
 src/core/git.ts         helpers de git
-src/core/adapters/      claude, codex, gemini, kimi (HTTP), fake (pruebas)
+src/core/providers.ts   proveedores: CLIs y APIs, claves, URLs
+src/core/catalog.ts     catálogo de modelos frontera y sus vías
+src/core/secrets.ts     secrets.env por sistema operativo
+src/core/adapters/      claude, codex, gemini (CLIs), anthropic (SDK), openai-compat, replicate, fake
 src/core/config.ts      configuración y registro de adaptadores
 src/cli/index.ts        comandos de terminal
-app/main/               proceso principal de Electron: IPC, vigilancia de plan.md, PATH
+app/main/               proceso principal de Electron: IPC, ajustes, login, PATH, vigilancia de plan.md
 app/preload/            puente seguro (contextBridge)
-app/renderer/           React: TopBar, Sidebar, PlanPanel, DebatePanel, NewDebateModal
-test/engine.test.ts     suite con FakeAdapter
+app/renderer/           React: TopBar, Sidebar, PlanPanel, DebatePanel, NewDebateModal, SettingsModal, ModelPicker
+test/                   motor (FakeAdapter), proveedores y adaptadores HTTP simulados
 ```

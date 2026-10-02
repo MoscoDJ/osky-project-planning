@@ -10,7 +10,13 @@ const api = {
   turnDiff: (n: number) => ipcRenderer.invoke("debate:turnDiff", n),
   candidateDiff: () => ipcRenderer.invoke("debate:candidateDiff"),
   pickDir: () => ipcRenderer.invoke("dialog:pickDir"),
+  settingsStatus: () => ipcRenderer.invoke("settings:status"),
+  setKey: (name: string, value: string) => ipcRenderer.invoke("settings:setKey", name, value),
+  testProvider: (id: string) => ipcRenderer.invoke("settings:test", id),
+  login: (id: string) => ipcRenderer.invoke("settings:login", id),
+  saveSettings: (s: unknown) => ipcRenderer.invoke("settings:save", s),
   openPath: (target: string) => ipcRenderer.invoke("shell:open", target),
+  openExternal: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
   onEvent: (cb: (ev: unknown) => void) => {
     const handler = (_e: IpcRendererEvent, ev: unknown) => cb(ev);
     ipcRenderer.on("debate:event", handler);

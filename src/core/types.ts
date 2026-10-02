@@ -1,22 +1,43 @@
-// Tipos centrales del motor de debate.
+// Tipos centrales del motor de Osky Project Planning.
 
-export type ParticipantKey = "A" | "B";
+/** Letra del participante: "A", "B", "C"… Se asigna por posición al crear el debate. */
+export type ParticipantKey = string;
 export type Role = ParticipantKey | "consolidator";
 
-export type AdapterId = "claude" | "codex" | "gemini" | "kimi" | "fake";
+/**
+ * Adaptador que ejecuta el turno.
+ * - claude / codex / gemini: CLIs oficiales (por login o por clave de API).
+ * - anthropic: API oficial de Anthropic (SDK).
+ * - openai-compat: cualquier API compatible con OpenAI Chat Completions
+ *   (OpenAI, OpenRouter, DigitalOcean, xAI, Moonshot, DeepSeek, Google, Alibaba, Z.ai…).
+ * - replicate: API de predicciones de Replicate.
+ * - kimi: alias heredado de openai-compat sobre DigitalOcean (debates antiguos).
+ */
+export type AdapterId = "claude" | "codex" | "gemini" | "anthropic" | "openai-compat" | "replicate" | "kimi" | "fake";
+
+/** Cómo se accede al modelo. */
+export type AccessMode = "cli-login" | "cli-key" | "api";
 
 export interface ModelSpec {
   adapter: AdapterId;
+  /** Id del modelo en el proveedor elegido. */
   model: string;
   effort?: string;
   /** Nombre legible para el usuario (nunca se envía a los modelos). */
   label: string;
+  /** Proveedor (ver providers.ts). Opcional por compatibilidad con debates antiguos. */
+  provider?: string;
+  access?: AccessMode;
+  /** Id de la entrada del catálogo de la que salió, si aplica. */
+  catalogId?: string;
+  /** Parámetros extra para la petición HTTP (p. ej. max_tokens), según el proveedor. */
+  params?: Record<string, unknown>;
 }
 
 export interface ParticipantConfig {
   key: ParticipantKey;
   spec: ModelSpec;
-  /** Id de sesión del CLI (session_id de Claude, thread_id de Codex). */
+  /** Id de sesión del CLI (session_id de Claude, thread_id de Codex, sesión de Gemini). */
   sessionId?: string;
 }
 
@@ -79,6 +100,7 @@ export interface TurnAttempt {
   n: number;
   model: string;
   adapter: AdapterId;
+  provider?: string;
   startedAt: string;
   finishedAt?: string;
   outcome: "published" | "paused" | "failed";
@@ -92,7 +114,7 @@ export interface TurnRecord {
   number: number;
   kind: TurnKind;
   participant: ParticipantKey;
-  /** Intervención i de N dentro de la fase inicial, o posición 1/2 dentro de un ciclo. */
+  /** Intervención i de N dentro de la fase inicial, o posición dentro de un ciclo. */
   position: number;
   positionTotal: number;
   cycleIndex?: number;
@@ -137,9 +159,8 @@ export interface CandidateInfo {
 
 /**
  * Orden de los ciclos de observación.
- * - global: empieza quien no habló último; conserva la alternancia A/B en todo el debate.
- * - alternate: alterna quién abre cada ciclo; reparte el cierre pero un participante
- *   puede hablar a ambos lados de la intervención del usuario.
+ * - global: empieza quien sigue al último que habló; conserva la rotación en todo el debate.
+ * - alternate: rota quién abre cada ciclo, independientemente de quién cerró el anterior.
  */
 export type CycleOrder = "global" | "alternate";
 
@@ -158,13 +179,16 @@ export interface DebateConfig {
 }
 
 export interface DebateState {
-  version: 1;
+  version: 1 | 2;
   id: string;
   title: string;
   createdAt: string;
   updatedAt: string;
   phase: Phase;
+  /** Primer participante del orden de palabra. */
   opener: ParticipantKey;
+  /** Orden de palabra sorteado al crear el debate (fijo durante todo el debate). */
+  order: ParticipantKey[];
   participants: Record<ParticipantKey, ParticipantConfig>;
   config: DebateConfig;
   turns: TurnRecord[];
@@ -187,8 +211,13 @@ export interface NewDebateOptions {
   rounds?: number;
   allowWeb?: boolean;
   contextDirs?: string[];
-  opener?: ParticipantKey | "random";
-  participants: { A: ModelSpec; B: ModelSpec };
+  /**
+   * Orden de palabra: "random" sortea; "fixed" respeta el orden de `participants`;
+   * una letra hace que ese participante abra y el resto siga en orden.
+   */
+  opener?: ParticipantKey | "random" | "fixed";
+  /** Modelos participantes, en orden. Reciben las letras A, B, C… Mínimo dos. */
+  participants: ModelSpec[] | { A: ModelSpec; B: ModelSpec };
   substitute: ModelSpec;
   consolidator: ModelSpec;
   consolidatorAlt: ModelSpec;
@@ -214,4 +243,10 @@ export interface AdapterEvent {
   text?: string;
   model?: string;
   data?: unknown;
+}
+
+export const LETTERS = "ABCDEFGHIJ".split("");
+
+export function specKey(s: ModelSpec): string {
+  return `${s.adapter === "kimi" ? "openai-compat" : s.adapter}|${s.provider ?? ""}|${s.access ?? ""}|${s.model}`;
 }

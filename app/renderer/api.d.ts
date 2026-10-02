@@ -1,4 +1,33 @@
 import type { DebateState, EngineEvent, ModelSpec } from "../../src/core/types";
+import type { CatalogModel } from "../../src/core/catalog";
+import type { ProviderDef } from "../../src/core/providers";
+
+export type { CatalogModel, ProviderDef, ModelSpec };
+
+export interface ModelDefaults {
+  participants: ModelSpec[];
+  substitute: ModelSpec;
+  consolidator: ModelSpec;
+  consolidatorAlt: ModelSpec;
+}
+
+export interface CliStatus {
+  binary: string;
+  installed: boolean;
+  path?: string;
+  version?: string;
+  login: "logged-in" | "logged-out" | "unknown" | "not-supported";
+  loginDetail?: string;
+}
+
+export interface ProviderStatus {
+  id: string;
+  keyEnv?: string;
+  keySet: boolean;
+  keyHint?: string;
+  keySource?: "secrets" | "env" | "cli";
+  cli?: CliStatus;
+}
 
 export interface DebateSummary {
   workspace: string;
@@ -28,18 +57,27 @@ export interface CreateOptions {
   rounds: number;
   allowWeb: boolean;
   contextDirs: string[];
-  opener: "A" | "B" | "random";
+  opener: string;
+  participants: ModelSpec[];
   fake: boolean;
+  fakeCount?: number;
   autoSubstitute: boolean;
   cycleOrder: "global" | "alternate";
   decisions: string[];
 }
 
 export interface UiConfig {
+  version: string;
   debatesRoot: string;
-  models: { A: ModelSpec; B: ModelSpec; substitute: ModelSpec; consolidator: ModelSpec; consolidatorAlt: ModelSpec };
-  fakeModels: { A: ModelSpec; B: ModelSpec; substitute: ModelSpec; consolidator: ModelSpec; consolidatorAlt: ModelSpec };
+  configDir: string;
+  models: ModelDefaults;
+  rounds: number;
+  autoSubstitute: boolean;
+  fakeModels: ModelDefaults;
+  catalog: CatalogModel[];
+  providers: ProviderDef[];
   pathAdded: string[];
+  platform: string;
 }
 
 export interface Api {
@@ -52,7 +90,13 @@ export interface Api {
   turnDiff(n: number): Promise<string>;
   candidateDiff(): Promise<string>;
   pickDir(): Promise<string | null>;
+  settingsStatus(): Promise<ProviderStatus[]>;
+  setKey(name: string, value: string): Promise<ProviderStatus[]>;
+  testProvider(id: string): Promise<{ ok: boolean; detail: string }>;
+  login(id: string): Promise<string>;
+  saveSettings(s: { models: ModelDefaults; rounds?: number; autoSubstitute?: boolean; debatesRoot?: string }): Promise<{ ok: boolean }>;
   openPath(target: string): Promise<string>;
+  openExternal(url: string): Promise<void>;
   onEvent(cb: (ev: UiEvent) => void): () => void;
 }
 

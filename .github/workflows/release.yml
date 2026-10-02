@@ -1,0 +1,162 @@
+name: Release
+
+# Compila Osky Project Planning en Linux, macOS y Windows y publica un Release.
+# Se dispara al empujar una etiqueta con el formato de versión vAAAA.M.D.N
+# (por ejemplo v2026.10.2.1: 2 de octubre de 2026, compilación 1), o a mano desde Actions.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versión AAAA.M.D.N (por ejemplo 2026.10.2.1)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Compilar (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            target: --linux AppImage deb --x64
+          - name: macOS
+            os: macos-latest
+            target: --mac dmg zip --arm64 --x64
+          - name: Windows
+            os: windows-latest
+            target: --win nsis --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versión
+        shell: bash
+        run: |
+          V="${{ github.event.inputs.version }}"
+          [ -z "$V" ] && V="${GITHUB_REF_NAME#v}"
+          if ! echo "$V" | grep -Eq '^[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}\.[0-9]+$'; then
+            echo "Versión inválida: '$V'. Formato esperado AAAA.M.D.N"; exit 1
+          fi
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+          echo "APP_SHORT=${V%.*}" >> "$GITHUB_ENV"
+          echo "Compilando $V"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Verificación de tipos
+        run: |
+          pnpm typecheck
+          pnpm typecheck:app
+
+      - name: Pruebas
+        run: pnpm test
+
+      - name: Compilar la app
+        run: pnpm build:app
+
+      - name: Empaquetar
+        shell: bash
+        env:
+          # Sin certificados por ahora: macOS recibe firma ad-hoc (necesaria en Apple Silicon)
+          # y Windows queda sin firmar.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: >
+          pnpm exec electron-builder ${{ matrix.target }} --publish never
+          -c.extraMetadata.version=$APP_VERSION
+          -c.buildVersion=$APP_VERSION
+          -c.mac.bundleShortVersion=$APP_SHORT
+          -c.mac.identity=-
+
+      - name: Subir instaladores
+        uses: actions/upload-artifact@v4
+        with:
+          name: osky-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+
+  release:
+    name: Publicar Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versión
+        shell: bash
+        run: |
+          V="${{ github.event.inputs.version }}"
+          [ -z "$V" ] && V="${GITHUB_REF_NAME#v}"
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Notas del release
+        shell: bash
+        run: |
+          IFS=. read -r Y M D N <<< "$APP_VERSION"
+          MESES=(enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre)
+          cat > notes.md <<EOF
+          Compilación $N del $D de ${MESES[$((M-1))]} de $Y.
+
+          ## Instaladores
+
+          | Sistema | Archivo |
+          |---|---|
+          | Linux (x64) | \`.AppImage\` (ejecutable directo) o \`.deb\` (\`sudo dpkg -i\`) |
+          | macOS Apple Silicon | \`-mac-arm64.dmg\` |
+          | macOS Intel | \`-mac-x64.dmg\` |
+          | Windows (x64) | \`-win-x64.exe\` |
+
+          ## Primera apertura
+
+          Estos instaladores todavía no están firmados con certificados de Apple ni de Windows.
+
+          - **macOS:** al abrirla por primera vez, macOS la bloquea. Ve a Ajustes del Sistema, Privacidad y seguridad, y pulsa "Abrir de todas formas". También funciona en Terminal: \`xattr -dr com.apple.quarantine "/Applications/Osky Project Planning.app"\`.
+          - **Windows:** si aparece "Windows protegió tu PC", pulsa "Más información" y luego "Ejecutar de todas formas".
+
+          ## Requisitos
+
+          git y los CLIs que vayas a usar (Claude Code, Codex, Gemini CLI). Los modelos por API solo necesitan su clave, que se configura en Ajustes.
+          EOF
+          sed -i 's/^          //' notes.md
+          cat notes.md
+          ls -la dist
+
+      - name: Crear Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="v$APP_VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "Osky Project Planning $APP_VERSION" --notes-file notes.md --target "$GITHUB_SHA"
+          fi

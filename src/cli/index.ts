@@ -3,7 +3,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { DebateEngine, EngineError } from "../core/engine.js";
-import { createRegistry, DEFAULT_CONFIG, FAKE_MODELS, loadConfig } from "../core/config.js";
+import { createRegistry, DEFAULT_CONFIG, FAKE_MODELS, fakeParticipants, loadConfig } from "../core/config.js";
+import { CATALOG, offeringKey, resolveSpecRef, specRef } from "../core/catalog.js";
+import { ACCESS_LABEL, PROVIDERS, getProvider } from "../core/providers.js";
+import { secretStatus, setSecret } from "../core/secrets.js";
 import { FakeAdapter } from "../core/adapters/fake.js";
 import { renderActa } from "../core/schema.js";
 import { STATE_FILE } from "../core/prompts.js";
@@ -12,8 +15,8 @@ import { exists } from "../core/fsutil.js";
 
 const program = new Command();
 program
-  .name("debate")
-  .description("Motor del debate de planeación entre IAs (uso desde terminal)")
+  .name("osky-planning")
+  .description("Osky Project Planning: debate de planeación entre modelos de IA (uso desde terminal)")
   .option("--config-dir <dir>", "directorio de configuración", DEFAULT_CONFIG.configDir)
   .option("-q, --quiet", "no mostrar el streaming de los modelos", false);
 
@@ -122,7 +125,9 @@ program
   .option("--root <dir>", "carpeta donde crear el workspace")
   .option("--context <dir...>", "carpetas de contexto en solo lectura")
   .option("--no-web", "deshabilitar búsqueda web")
-  .option("--start <A|B>", "quién abre (por defecto, sorteo)")
+  .option("--start <letra>", "quién abre (por defecto, sorteo)")
+  .option("-m, --model <ref...>", "participantes en orden, como catalogId@proveedor:acceso (ver `models`); por defecto los de la configuración")
+  .option("--participants <n>", "con --fake: cuántos participantes simulados", "2")
   .option("--decision <text...>", "decisiones o restricciones del usuario")
   .option("--fake", "usar participantes simulados (sin cuota)", false)
   .option("--no-substitute", "desactivar la sustitución automática por Kimi K3")
@@ -135,17 +140,22 @@ program
     if (o.briefFile) brief = await fs.readFile(o.briefFile, "utf8");
     if (!brief?.trim()) throw new EngineError("Falta la petición: usa --brief o --brief-file.");
     const models = o.fake ? FAKE_MODELS : cfg.models;
+    const participants = o.fake
+      ? fakeParticipants(Math.max(2, Number(o.participants) || 2))
+      : o.model?.length
+        ? (o.model as string[]).map(resolveSpecRef)
+        : cfg.models.participants;
     const registry = createRegistry(cfg, new FakeAdapter());
     const engine = await DebateEngine.create(
       {
         root: o.root ?? cfg.debatesRoot,
         title,
         brief,
-        rounds: Number(o.rounds),
+        rounds: Number(o.rounds) || cfg.rounds,
         allowWeb: o.web !== false,
         contextDirs: o.context ?? [],
-        opener: o.start === "A" || o.start === "B" ? o.start : "random",
-        participants: { A: models.A, B: models.B },
+        opener: o.start ? String(o.start).toUpperCase() : "random",
+        participants,
         substitute: models.substitute,
         consolidator: models.consolidator,
         consolidatorAlt: models.consolidatorAlt,
@@ -161,6 +171,53 @@ program
     console.log(`Debate creado en ${engine.workspace}`);
     console.log(engine.summary());
     if (o.run) await engine.run();
+  });
+
+program
+  .command("models")
+  .description("Lista el catálogo de modelos frontera y sus vías de acceso")
+  .action(async () => {
+    const opts = program.opts();
+    const cfg = await loadConfig(opts.configDir);
+    for (const m of CATALOG) {
+      console.log(`\n${m.label} (${m.vendor}) · $${m.priceIn}/$${m.priceOut} por 1M tokens · ${m.contextK}K de contexto`);
+      if (m.notes) console.log(`  ${m.notes}`);
+      for (const o of m.offerings) {
+        const p = getProvider(o.provider)!;
+        const key = p.keyEnv && o.access !== "cli-login" ? (secretStatus(cfg.configDir, p.keyEnv).set ? "clave ✓" : `falta ${p.keyEnv}`) : "login";
+        console.log(`  - ${specRef(m.id, o).padEnd(48)} ${p.label} · ${ACCESS_LABEL[o.access]} · ${o.model} [${key}]${o.note ? `\n      ${o.note}` : ""}`);
+      }
+    }
+  });
+
+program
+  .command("providers")
+  .description("Lista los proveedores y el estado de sus claves")
+  .action(async () => {
+    const opts = program.opts();
+    const cfg = await loadConfig(opts.configDir);
+    for (const p of PROVIDERS) {
+      const st = p.keyEnv ? secretStatus(cfg.configDir, p.keyEnv) : { set: false };
+      console.log(`${p.id.padEnd(14)} ${p.label} · ${p.access.map((a) => ACCESS_LABEL[a]).join(", ")} · ${p.keyEnv ? `${p.keyEnv}: ${st.set ? `configurada (…${st.hint})` : "sin configurar"}` : ""}`);
+    }
+  });
+
+program
+  .command("key")
+  .description("Guarda (o borra con valor vacío) una clave de API en secrets.env")
+  .argument("<name>", "variable, p. ej. ANTHROPIC_API_KEY u OPENROUTER_API_KEY")
+  .argument("[value]", "valor; si se omite se lee de stdin")
+  .action(async (name: string, value?: string) => {
+    const opts = program.opts();
+    const cfg = await loadConfig(opts.configDir);
+    let v = value;
+    if (v === undefined) {
+      const chunks: Buffer[] = [];
+      for await (const c of process.stdin) chunks.push(c as Buffer);
+      v = Buffer.concat(chunks).toString("utf8").trim();
+    }
+    await setSecret(cfg.configDir, name, v ?? "");
+    console.log(v ? `Clave ${name} guardada.` : `Clave ${name} borrada.`);
   });
 
 program

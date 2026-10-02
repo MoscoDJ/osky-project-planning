@@ -9,13 +9,26 @@ const PHASE_LABEL: Record<string, string> = {
   closed: "Cerrado",
 };
 
-export function TopBar({ snap, busy, onAction }: { snap: Snapshot | null; busy: string | null; onAction: (name: string, arg?: string) => void }) {
+export function TopBar({
+  snap,
+  busy,
+  onAction,
+  onSettings,
+}: {
+  snap: Snapshot | null;
+  busy: string | null;
+  onAction: (name: string, arg?: string) => void;
+  onSettings: () => void;
+}) {
   const s = snap?.state;
   if (!s) {
     return (
       <div className="top">
-        <span className="title">Osky Debate</span>
-        <span className="muted">Sistema de debate de planeación entre IAs</span>
+        <img src="./icon.png" alt="" width={26} height={26} />
+        <span className="title">Osky Project Planning</span>
+        <span className="muted">Debate de planeación entre modelos de IA</span>
+        <span className="spacer" />
+        <button onClick={onSettings}>⚙ Ajustes</button>
       </div>
     );
   }
@@ -29,14 +42,18 @@ export function TopBar({ snap, busy, onAction }: { snap: Snapshot | null; busy: 
 
   return (
     <div className="top">
+      <img src="./icon.png" alt="" width={24} height={24} title="Osky Project Planning" />
       <span className="title">{s.title}</span>
       <span className="badge">{PHASE_LABEL[s.phase] ?? s.phase}</span>
       <span className="kv small">
-        <span className="pA">A</span> {s.participants.A.spec.label}
+        {(s.order ?? Object.keys(s.participants)).map((k, i) => (
+          <span key={k} className="kv">
+            {i > 0 && <span className="muted">→</span>}
+            <span className={`p${k}`}>{k}</span> {s.participants[k].spec.label}
+          </span>
+        ))}
         <span className="muted">·</span>
-        <span className="pB">B</span> {s.participants.B.spec.label}
-        <span className="muted">·</span>
-        <span className="pC">C</span> {s.config.consolidator.label}
+        <span className="pCons">consolida</span> {s.config.consolidator.label}
       </span>
       <span className="badge">
         Turnos {published}/{total}
@@ -94,6 +111,9 @@ export function TopBar({ snap, busy, onAction }: { snap: Snapshot | null; busy: 
           )}
         </>
       )}
+      <button onClick={onSettings} title="Ajustes">
+        ⚙
+      </button>
       {s.phase === "candidate_ready" && (
         <>
           <button className="primary" disabled={!idle} onClick={() => onAction("accept")}>

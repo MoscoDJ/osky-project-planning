@@ -640,3 +640,33 @@ Cambios de esta revisión (v1.1, 23-sep-2026) a petición del usuario: consolida
 candidato revisable sin reemplazo automático, sin respaldo en participantes, con Kimi K3
 como alternativa manual y con `brief.md` más decisiones como entrada; `rechazos` y
 `desacuerdos` aceptan lista vacía.
+
+## 16. Revisión del 2-oct-2026: Osky Project Planning
+
+A petición del usuario:
+
+- **Nombre:** el producto pasa a llamarse Osky Project Planning (paquete, app, menú, CLI
+  `osky-planning`, carpeta de configuración `osky-project-planning`). La configuración de
+  `~/.config/osky-debate` se migra sola.
+- **Fable 5.1 por API:** en Claude Pro, Fable ya solo corre con créditos de uso. El valor por
+  defecto es Claude Code con clave de API (`--bare` + `ANTHROPIC_API_KEY`), que conserva las
+  herramientas; la API oficial de Anthropic con el SDK queda como alternativa.
+- **Modelos configurables:** catálogo de frontera (`src/core/catalog.ts`) con vías por
+  proveedor y modo de acceso: CLI con login (Claude Code, Codex), CLI con clave (Claude Code,
+  Codex, Gemini CLI) y API (Anthropic, OpenAI, Google, xAI, Moonshot, DeepSeek, Alibaba,
+  Z.ai, OpenRouter, DigitalOcean, Replicate). Las claves se gestionan desde Ajustes.
+- **N participantes:** de 2 a 10, con orden de palabra sorteado. La fase inicial tiene
+  rondas × N turnos; cada observación abre un ciclo de N respuestas. El paquete de cada turno
+  trae las actas de todos los demás desde el último turno propio. El archivo de reglas de
+  cada CLI es genérico para que dos participantes puedan compartir CLI, y `debate.md` ya no
+  nombra modelos para preservar el anonimato.
+
+Hallazgos de la investigación del 2-oct-2026 que cambian el diseño:
+
+- Gemini CLI dejó de servir cuentas personales de Google el 18-jun-2026: solo clave de API.
+  Su sucesor con login es Antigravity CLI (`agy`), no integrado todavía.
+- Codex acepta `CODEX_API_KEY` en `codex exec` sin tocar el login guardado.
+- Hay CLIs con login para Grok (Grok Build, beta) y Kimi (Kimi Code); no integrados todavía.
+- Replicate va rezagado en modelos frontera (solo Fable 5 y Gemini 3.1 Pro).
+- DigitalOcean lista modelos en `/models` que la clave puede no estar autorizada a usar
+  (GLM-5.3 respondió 403 con la clave actual).

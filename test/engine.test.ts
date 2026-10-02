@@ -6,7 +6,7 @@ import { DebateEngine, computeIdentity, checkMarkdown } from "../src/core/engine
 import { FakeAdapter, type FakeBehavior } from "../src/core/adapters/fake.js";
 import { Registry } from "../src/core/adapters/registry.js";
 import { validateActa } from "../src/core/schema.js";
-import { parseKimiOutput } from "../src/core/adapters/kimi.js";
+import { parseInlineOutput as parseKimiOutput } from "../src/core/adapters/inline.js";
 import { Git } from "../src/core/git.js";
 import { FAKE_MODELS } from "../src/core/config.js";
 import type { NewDebateOptions } from "../src/core/types.js";

@@ -13,9 +13,12 @@ async function git(cwd: string, args: string[]): Promise<string> {
 export const Git = {
   async init(cwd: string): Promise<void> {
     await git(cwd, ["init", "-q"]);
-    await git(cwd, ["config", "user.name", "Osky Debate"]);
+    await git(cwd, ["config", "user.name", "Osky Project Planning"]);
     await git(cwd, ["config", "user.email", "debate@localhost"]);
     await git(cwd, ["config", "commit.gpgsign", "false"]);
+    // En Windows git convierte LF a CRLF por defecto: alteraría plan.md y la detección de cambios.
+    await git(cwd, ["config", "core.autocrlf", "false"]);
+    await git(cwd, ["config", "core.safecrlf", "false"]);
   },
 
   async head(cwd: string): Promise<string> {

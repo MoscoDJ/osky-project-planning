@@ -5,6 +5,7 @@ import { TopBar } from "./components/TopBar";
 import { PlanPanel } from "./components/PlanPanel";
 import { DebatePanel } from "./components/DebatePanel";
 import { NewDebateModal } from "./components/NewDebateModal";
+import { SettingsModal } from "./components/SettingsModal";
 
 export interface StreamState {
   turn: number;
@@ -24,6 +25,7 @@ export function App() {
   const [stream, setStream] = useState<StreamState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [input, setInput] = useState("");
   const streamText = useRef("");
 
@@ -169,7 +171,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar snap={snap} busy={busy} onAction={act} />
+      <TopBar snap={snap} busy={busy} onAction={act} onSettings={() => setShowSettings(true)} />
       <Sidebar debates={debates} current={snap?.workspace} onOpen={openDebate} onNew={() => setShowNew(true)} onRefresh={refreshList} />
       {snap && state ? (
         <>
@@ -181,7 +183,7 @@ export function App() {
                 paused
                   ? "Escribe la respuesta a la pregunta bloqueante…"
                   : state.phase === "awaiting_user"
-                    ? "Escribe una observación para abrir un ciclo de dos respuestas, o registra una decisión…"
+                    ? "Escribe una observación para abrir un ciclo con una respuesta por participante, o registra una decisión…"
                     : "La caja se habilita cuando el debate espera al usuario."
               }
               value={input}
@@ -206,12 +208,21 @@ export function App() {
       ) : (
         <div className="plan" style={{ gridColumn: "plan / debate" }}>
           <div className="empty">
-            <div style={{ fontSize: 18, fontWeight: 600 }}>Osky Debate</div>
+            <img src="./icon.png" alt="" width={112} height={112} style={{ filter: "drop-shadow(0 6px 24px rgba(91,157,255,0.35))" }} />
+            <div style={{ fontSize: 20, fontWeight: 600 }}>Osky Project Planning</div>
+            <div className="muted small">Modelos de IA de frontera debaten, refinan y consolidan tu plan de proyecto.</div>
             <div>Abre un debate de la lista o crea uno nuevo.</div>
-            <button className="primary" onClick={() => setShowNew(true)}>
-              Nuevo debate
-            </button>
-            {config && <div className="small muted">Debates en {config.debatesRoot}</div>}
+            <div className="row">
+              <button className="primary" onClick={() => setShowNew(true)}>
+                Nuevo debate
+              </button>
+              <button onClick={() => setShowSettings(true)}>Modelos, proveedores y claves</button>
+            </div>
+            {config && (
+              <div className="small muted">
+                Versión {config.version} · Debates en {config.debatesRoot}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -221,7 +232,24 @@ export function App() {
           <button onClick={() => setError(null)}>Cerrar</button>
         </div>
       )}
-      {showNew && config && <NewDebateModal config={config} onCancel={() => setShowNew(false)} onCreate={createDebate} />}
+      {showNew && config && (
+        <NewDebateModal
+          config={config}
+          onCancel={() => setShowNew(false)}
+          onCreate={createDebate}
+          onOpenSettings={() => {
+            setShowNew(false);
+            setShowSettings(true);
+          }}
+        />
+      )}
+      {showSettings && config && (
+        <SettingsModal
+          config={config}
+          onClose={() => setShowSettings(false)}
+          onSaved={async () => setConfig(await window.api.config())}
+        />
+      )}
     </div>
   );
 }

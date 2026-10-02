@@ -1,11 +1,11 @@
 {
-  "name": "osky-debate",
-  "version": "0.1.0",
-  "description": "Motor y CLI del sistema de debate de planeación entre IAs",
+  "name": "osky-project-planning",
+  "version": "2026.10.2",
+  "description": "Osky Project Planning: debate de planeación de proyectos entre modelos de IA de frontera",
   "type": "module",
   "private": true,
   "bin": {
-    "debate": "./bin/debate.js"
+    "osky-planning": "./bin/osky-planning.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -16,12 +16,17 @@
     "build:app": "electron-vite build",
     "start": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --linux AppImage deb",
-    "typecheck:app": "tsc -p tsconfig.electron.json"
+    "typecheck:app": "tsc -p tsconfig.electron.json",
+    "dist:mac": "electron-vite build && electron-builder --mac dmg zip",
+    "dist:win": "electron-vite build && electron-builder --win nsis",
+    "release": "bash scripts/release.sh"
   },
   "engines": {
     "node": ">=22"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "^24.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -29,6 +34,7 @@
     "ajv": "^8.17.1",
     "chokidar": "^5.0.0",
     "commander": "^14.0.0",
+    "cross-spawn": "^7.0.6",
     "electron": "^44.4.4",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
@@ -41,19 +47,13 @@
     "vite": "^8.3.0",
     "vitest": "^3.2.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "electron",
-      "electron-builder"
-    ]
-  },
   "main": "out/main/index.cjs",
   "build": {
-    "appId": "mx.ninja.osky-debate",
-    "productName": "Osky Debate",
+    "appId": "mx.ninja.osky-project-planning",
+    "productName": "Osky Project Planning",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/**/*",
@@ -66,15 +66,46 @@
       ],
       "category": "Development",
       "maintainer": "oscar@ninja.com.mx",
+      "executableName": "osky-project-planning",
       "desktop": {
         "entry": {
-          "Name": "Osky Debate",
-          "Comment": "Debate de planeación entre IAs",
-          "Categories": "Development;"
+          "Name": "Osky Project Planning",
+          "Comment": "Debate de planeación de proyectos entre IAs",
+          "Categories": "Development;",
+          "StartupWMClass": "osky-project-planning"
         }
-      }
+      },
+      "icon": "build/icon.png",
+      "synopsis": "Debate de planeación de proyectos entre modelos de IA"
     },
     "npmRebuild": false,
-    "asar": true
-  }
+    "asar": true,
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "icon": "build/icon.png",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "icon": "build/icon.png",
+    "artifactName": "Osky-Project-Planning-${version}-${os}-${arch}.${ext}"
+  },
+  "desktopName": "osky-project-planning.desktop",
+  "packageManager": "pnpm@12.3.4"
 }

@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { AdapterEvent } from "../types.js";
 import { execCmd, extractJson, safeJsonParse } from "../fsutil.js";
-import { rawLogger, tail, type Adapter, type TurnRequest, type TurnResult } from "./types.js";
+import { envSecrets, rawLogger, tail, type Adapter, type SecretResolver, type TurnRequest, type TurnResult } from "./types.js";
 
 export interface ClaudeAdapterOptions {
   binary?: string;
+  secrets?: SecretResolver;
 }
 
 interface ClaudeResult {
@@ -30,9 +31,11 @@ export class ClaudeAdapter implements Adapter {
   readonly editsFiles = true;
   readonly supportsResume = true;
   private binary: string;
+  private secrets: SecretResolver;
 
   constructor(opts: ClaudeAdapterOptions = {}) {
     this.binary = opts.binary ?? "claude";
+    this.secrets = opts.secrets ?? envSecrets;
   }
 
   async runTurn(req: TurnRequest, onEvent: (e: AdapterEvent) => void): Promise<TurnResult> {
@@ -60,6 +63,20 @@ export class ClaudeAdapter implements Adapter {
     const env = { ...process.env };
     delete env.CLAUDECODE;
     delete env.CLAUDE_CODE_ENTRYPOINT;
+    if (req.spec.access === "cli-key") {
+      // Modo clave: --bare usa solo ANTHROPIC_API_KEY (nunca el login) y no lee CLAUDE.md,
+      // así que las reglas del debate van en el system prompt.
+      const key = this.secrets("ANTHROPIC_API_KEY");
+      if (!key) return { ok: false, error: "falta la clave de la API de Anthropic (ANTHROPIC_API_KEY) para Claude Code", modelsReported: [], text: "" };
+      env.ANTHROPIC_API_KEY = key;
+      delete env.ANTHROPIC_AUTH_TOKEN;
+      args.unshift("--bare");
+      args.push("--append-system-prompt", req.systemPrompt);
+    } else {
+      // Modo login: se quitan las claves del entorno para que use la suscripción.
+      delete env.ANTHROPIC_API_KEY;
+      delete env.ANTHROPIC_AUTH_TOKEN;
+    }
 
     const models = new Set<string>();
     let result: ClaudeResult | undefined;

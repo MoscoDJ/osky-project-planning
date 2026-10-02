@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import crossSpawn from "cross-spawn";
 import { randomUUID } from "node:crypto";
 
 export async function atomicWrite(file: string, content: string): Promise<void> {
@@ -68,11 +68,13 @@ export function execCmd(cmd: string, args: string[], opts: ExecOptions = {}): Pr
     let stderr = "";
     let buf = "";
     let timedOut = false;
-    const child = spawn(cmd, args, {
+    // cross-spawn: en Windows ejecuta los shims .cmd de npm con el entrecomillado correcto;
+    // en Linux y macOS equivale a child_process.spawn.
+    const child = crossSpawn(cmd, args, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
       stdio: ["pipe", "pipe", "pipe"],
-    });
+    }) as import("node:child_process").ChildProcessWithoutNullStreams;
     const timer = opts.timeoutMs
       ? setTimeout(() => {
           timedOut = true;

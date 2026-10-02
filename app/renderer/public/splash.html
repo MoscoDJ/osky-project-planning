@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; img-src 'self';" />
+    <title>Osky Project Planning</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0a1030;
+        overflow: hidden;
+        user-select: none;
+        cursor: default;
+      }
+      .wrap {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        animation: fade 0.45s ease-out;
+      }
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .bar {
+        position: absolute;
+        left: 63.8%;
+        bottom: 10.5%;
+        width: 22%;
+        height: 3px;
+        border-radius: 3px;
+        background: rgba(120, 160, 255, 0.18);
+        overflow: hidden;
+      }
+      .bar::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        width: 40%;
+        border-radius: 3px;
+        background: linear-gradient(90deg, #5b9dff, #9b7bff);
+        animation: slide 1.2s ease-in-out infinite;
+      }
+      @keyframes slide {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(250%);
+        }
+      }
+      @keyframes fade {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <img src="splash.png" alt="Osky Project Planning" draggable="false" />
+      <div class="bar"></div>
+    </div>
+  </body>
+</html>

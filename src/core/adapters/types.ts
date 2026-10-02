@@ -54,6 +54,11 @@ export interface AdapterRegistry {
   get(spec: ModelSpec): Adapter;
 }
 
+/** Resuelve claves de API por nombre de variable (secrets.env y entorno). */
+export type SecretResolver = (name: string) => string | undefined;
+
+export const envSecrets: SecretResolver = (name) => process.env[name] || undefined;
+
 /** Escribe líneas crudas del CLI en el archivo de log del turno, en orden. */
 export function rawLogger(logFile: string): (line: string) => void {
   mkdirSync(path.dirname(logFile), { recursive: true });

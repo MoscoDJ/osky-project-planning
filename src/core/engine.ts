@@ -10,10 +10,13 @@ import type {
   Identity,
   ModelSpec,
   NewDebateOptions,
+  ParticipantConfig,
   ParticipantKey,
   TurnAttempt,
   TurnRecord,
 } from "./types.js";
+import { LETTERS, specKey } from "./types.js";
+import { providerForLegacy } from "./providers.js";
 import type { Adapter, AdapterRegistry, TurnRequest, TurnResult } from "./adapters/types.js";
 import { ACTA_SCHEMA, hasBlockingQuestion, validateActa } from "./schema.js";
 import { Git } from "./git.js";
@@ -33,7 +36,7 @@ import {
   consolidatorRules,
   debateHeader,
   debateTurnEntry,
-  other,
+  nextInOrder,
   planTemplate,
   protocolText,
   cliAnnex,
@@ -69,30 +72,39 @@ export class DebateEngine {
     if (await exists(ws)) throw new EngineError(`Ya existe el workspace ${ws}`);
     await fs.mkdir(path.join(ws, INTERNAL_DIR, "turns"), { recursive: true });
 
-    const opener: ParticipantKey =
-      opts.opener === "A" || opts.opener === "B" ? opts.opener : Math.random() < 0.5 ? "A" : "B";
+    const specs: ModelSpec[] = Array.isArray(opts.participants) ? opts.participants : [opts.participants.A, opts.participants.B];
+    if (specs.length < 2) throw new EngineError("Un debate necesita al menos dos participantes.");
+    if (specs.length > LETTERS.length) throw new EngineError(`Máximo ${LETTERS.length} participantes.`);
+    const keys = specs.map((_, i) => LETTERS[i]);
+    const participants: Record<ParticipantKey, ParticipantConfig> = {};
+    keys.forEach((k, i) => (participants[k] = { key: k, spec: normalizeSpec(specs[i]) }));
+    let order: ParticipantKey[];
+    if (opts.opener === "fixed") order = [...keys];
+    else if (opts.opener && keys.includes(opts.opener)) {
+      const i = keys.indexOf(opts.opener);
+      order = [...keys.slice(i), ...keys.slice(0, i)];
+    } else order = shuffle(keys);
+    const opener = order[0];
     const rounds = Math.max(1, opts.rounds ?? 3);
     const now = nowIso();
     const state: DebateState = {
-      version: 1,
+      version: 2,
       id: randomUUID(),
       title: opts.title,
       createdAt: now,
       updatedAt: now,
       phase: "initial",
       opener,
-      participants: {
-        A: { key: "A", spec: opts.participants.A },
-        B: { key: "B", spec: opts.participants.B },
-      },
+      order,
+      participants,
       config: {
         rounds,
         allowWeb: opts.allowWeb ?? true,
         contextDirs: (opts.contextDirs ?? []).map((d) => path.resolve(d)),
         autoSubstitute: opts.autoSubstitute ?? true,
-        substitute: opts.substitute,
-        consolidator: opts.consolidator,
-        consolidatorAlt: opts.consolidatorAlt,
+        substitute: normalizeSpec(opts.substitute),
+        consolidator: normalizeSpec(opts.consolidator),
+        consolidatorAlt: normalizeSpec(opts.consolidatorAlt),
         turnTimeoutMs: opts.turnTimeoutMs ?? 20 * 60 * 1000,
         changeRatioThreshold: opts.changeRatioThreshold ?? 0.6,
         cycleOrder: opts.cycleOrder ?? "global",
@@ -105,15 +117,16 @@ export class DebateEngine {
       abbreviated: false,
       nextAction: "next",
     };
-    const total = rounds * 2;
+    const n = order.length;
+    const total = rounds * n;
     for (let i = 1; i <= total; i++) {
-      const participant: ParticipantKey = i % 2 === 1 ? opener : other(opener);
+      const participant: ParticipantKey = order[(i - 1) % n];
       state.turns.push({
         id: randomUUID(),
         number: i,
         kind: "initial",
         participant,
-        position: Math.ceil(i / 2),
+        position: Math.ceil(i / n),
         positionTotal: rounds,
         objective: turnObjective("initial", i, total),
         status: "pending",
@@ -132,9 +145,14 @@ export class DebateEngine {
     await atomicWrite(path.join(ws, DEBATE_FILE), debateHeader(state, opts.brief));
     await atomicWrite(path.join(ws, ".gitignore"), `${INTERNAL_DIR}/\n${STATE_FILE}\n*.tmp-*\n`);
     await atomicWrite(path.join(ws, INTERNAL_DIR, "schema.json"), JSON.stringify(ACTA_SCHEMA, null, 2));
-    for (const p of ["A", "B"] as ParticipantKey[]) {
-      const spec = state.participants[p].spec;
-      await atomicWrite(path.join(ws, rulesFileFor(spec.adapter, p)), rulesFileContent(spec.adapter, p, rounds));
+    // Un archivo de reglas genérico por CLI: si dos participantes usan el mismo CLI, lo comparten.
+    const written = new Set<string>();
+    for (const k of order) {
+      const spec = state.participants[k].spec;
+      const file = rulesFileFor(spec.adapter);
+      if (!file || written.has(file)) continue;
+      written.add(file);
+      await atomicWrite(path.join(ws, file), rulesFileContent(spec.adapter, order, rounds));
     }
     await Git.init(ws);
     await Git.commitAll(ws, "Setup del debate");
@@ -149,6 +167,11 @@ export class DebateEngine {
     if (!(await exists(file))) throw new EngineError(`No hay ${STATE_FILE} en ${ws}`);
     const state = JSON.parse(await readText(file)) as DebateState;
     // Migración de estados creados por versiones anteriores del motor.
+    state.order ??= [state.opener, state.opener === "A" ? "B" : "A"];
+    for (const p of Object.values(state.participants)) p.spec = normalizeSpec(p.spec);
+    state.config.substitute = normalizeSpec(state.config.substitute);
+    state.config.consolidator = normalizeSpec(state.config.consolidator);
+    state.config.consolidatorAlt = normalizeSpec(state.config.consolidatorAlt);
     state.config.cycleOrder ??= "global";
     state.abbreviated ??= false;
     state.clarifications ??= [];
@@ -212,7 +235,7 @@ export class DebateEngine {
       `Debate: ${s.title}`,
       `Workspace: ${this.workspace}`,
       `Fase: ${s.phase} · Siguiente acción: ${s.nextAction}`,
-      `Abre: Participante ${s.opener} · A = ${s.participants.A.spec.label} · B = ${s.participants.B.spec.label}`,
+      `Orden de palabra: ${s.order.join(" → ")} · ${s.order.map((k) => `${k} = ${s.participants[k].spec.label}`).join(" · ")}`,
       `Rondas: ${s.config.rounds} · Web: ${s.config.allowWeb ? "sí" : "no"} · Sustituto automático: ${s.config.autoSubstitute ? s.config.substitute.label : "no"} · Orden de ciclos: ${s.config.cycleOrder}`,
       ...(s.abbreviated ? ["DEBATE ABREVIADO: se saltó al menos un turno; no se completaron todas las intervenciones."] : []),
       "",
@@ -244,8 +267,8 @@ export class DebateEngine {
 
     const own = s.participants[turn.participant].spec;
     const sub = s.config.substitute;
-    const ownAttempts = turn.attempts.filter((a) => a.model === own.model && a.adapter === own.adapter).length;
-    const subAttempts = turn.attempts.filter((a) => a.model === sub.model && a.adapter === sub.adapter).length;
+    const ownAttempts = turn.attempts.filter((a) => attemptMatches(a, own)).length;
+    const subAttempts = turn.attempts.filter((a) => attemptMatches(a, sub)).length;
 
     const canOwn = opts.force ? true : ownAttempts < 2;
     const canSub = s.config.autoSubstitute && (opts.force ? true : subAttempts < 1);
@@ -340,8 +363,7 @@ export class DebateEngine {
   }
 
   private isOwn(turn: TurnRecord, spec: ModelSpec): boolean {
-    const own = this.specOwn(turn);
-    return own.model === spec.model && own.adapter === spec.adapter;
+    return specKey(this.specOwn(turn)) === specKey(spec);
   }
 
   private lockPath(): string {
@@ -412,6 +434,7 @@ export class DebateEngine {
       n: turn.attempts.length + 1,
       model: spec.model,
       adapter: spec.adapter,
+      provider: spec.provider,
       startedAt: nowIso(),
       outcome: "failed",
     };
@@ -434,8 +457,9 @@ export class DebateEngine {
     const req: TurnRequest = {
       workspace: ws,
       prompt,
-      systemPrompt: protocolText({ participant: turn.participant, rounds: s.config.rounds }) + cliAnnex(spec.adapter, "participant", PLAN_FILE),
-      rulesFile: rulesFileFor(spec.adapter, turn.participant),
+      systemPrompt:
+        protocolText({ participants: s.order, participant: turn.participant, rounds: s.config.rounds }) + cliAnnex(spec.adapter, "participant", PLAN_FILE),
+      rulesFile: rulesFileFor(spec.adapter) ?? undefined,
       schemaFile: path.join(ws, INTERNAL_DIR, "schema.json"),
       schema: ACTA_SCHEMA,
       spec,
@@ -526,16 +550,25 @@ export class DebateEngine {
       return blockingAnswerPrompt(answer);
     }
     const brief = await readText(path.join(this.workspace, BRIEF_FILE));
-    const lastOther = [...s.turns]
-      .filter((t) => t.number < turn.number && t.participant !== turn.participant && t.status === "published" && t.acta)
-      .pop();
-    let lastOtherDiff: string | undefined;
-    if (lastOther?.commit && lastOther.baseCommit) {
-      try {
-        lastOtherDiff = await Git.diff(this.workspace, lastOther.baseCommit, lastOther.commit, PLAN_FILE);
-      } catch {
-        lastOtherDiff = undefined;
+    // Intervenciones de los demás desde el último turno publicado de este participante.
+    const before = s.turns.filter((t) => t.number < turn.number);
+    const myLast = [...before].reverse().find((t) => t.participant === turn.participant && t.status === "published");
+    const since = before.filter(
+      (t) => t.participant !== turn.participant && t.status === "published" && t.acta && (!myLast || t.number > myLast.number),
+    );
+    // Sin turno previo propio (primera intervención), basta con la última de cada otro participante.
+    const relevant = myLast ? since : dedupeLastPerParticipant(since);
+    const othersSince: Array<{ turn: TurnRecord; diff?: string }> = [];
+    for (const t of relevant) {
+      let diff: string | undefined;
+      if (t.commit && t.baseCommit) {
+        try {
+          diff = await Git.diff(this.workspace, t.baseCommit, t.commit, PLAN_FILE);
+        } catch {
+          diff = undefined;
+        }
       }
+      othersSince.push({ turn: t, diff });
     }
     const cycle = turn.kind === "cycle" && turn.cycleIndex !== undefined ? s.cycles[turn.cycleIndex] : undefined;
     const inline = !adapter.editsFiles;
@@ -544,8 +577,7 @@ export class DebateEngine {
       turn,
       planCommit: turn.baseCommit ?? "HEAD",
       brief,
-      lastOtherTurn: lastOther,
-      lastOtherDiff,
+      othersSince,
       observation: cycle?.observation,
       blockingAnswer: answer,
       includeProtocol: inline || !adapter.supportsResume || !this.isOwn(turn, spec),
@@ -597,11 +629,11 @@ export class DebateEngine {
 
   private advanceAfter(turn: TurnRecord): void {
     const s = this.state;
-    const isLastInitial = turn.kind === "initial" && turn.number === s.config.rounds * 2;
-    const isLastOfCycle = turn.kind === "cycle" && turn.position === 2;
+    const isLastInitial = turn.kind === "initial" && turn.number === s.config.rounds * s.order.length;
+    const isLastOfCycle = turn.kind === "cycle" && turn.position === turn.positionTotal;
     if (isLastInitial || isLastOfCycle) {
       s.phase = "awaiting_user";
-      s.nextAction = "Escribe una observación con `say` (abre un ciclo de dos respuestas) o cierra con `finalize`.";
+      s.nextAction = `Escribe una observación con \`say\` (abre un ciclo de ${s.order.length} respuestas, una por participante) o cierra con \`finalize\`.`;
     } else {
       s.phase = turn.kind === "initial" ? "initial" : "user_cycle";
       s.nextAction = "next";
@@ -631,21 +663,24 @@ export class DebateEngine {
       throw new EngineError(`No se aceptan observaciones en la fase "${s.phase}". Siguiente acción: ${s.nextAction}`);
     }
     const index = s.cycles.length;
-    const lastSpeaker = [...s.turns].filter((t) => t.status === "published" || t.status === "skipped").pop()?.participant ?? s.opener;
+    const order = s.order;
+    const n = order.length;
+    const lastSpeaker = [...s.turns].filter((t) => t.status === "published" || t.status === "skipped").pop()?.participant ?? order[n - 1];
     const starts: ParticipantKey =
-      s.config.cycleOrder === "alternate" ? (index % 2 === 0 ? other(s.opener) : s.opener) : other(lastSpeaker);
+      s.config.cycleOrder === "alternate" ? order[(index + 1) % n] : nextInOrder(order, lastSpeaker);
+    const startIdx = order.indexOf(starts);
     const nextNumber = Math.max(0, ...s.turns.map((t) => t.number)) + 1;
-    const turns: TurnRecord[] = [1, 2].map((pos) => {
-      const participant = pos === 1 ? starts : other(starts);
+    const turns: TurnRecord[] = Array.from({ length: n }, (_, i) => i + 1).map((pos) => {
+      const participant = order[(startIdx + pos - 1) % n];
       return {
         id: randomUUID(),
         number: nextNumber + pos - 1,
         kind: "cycle" as const,
         participant,
         position: pos,
-        positionTotal: 2,
+        positionTotal: n,
         cycleIndex: index,
-        objective: turnObjective("cycle", pos, 2, pos),
+        objective: turnObjective("cycle", pos, n, pos),
         status: "pending" as const,
         attempts: [],
         modelRequested: s.participants[participant].spec.model,
@@ -727,8 +762,8 @@ export class DebateEngine {
     };
     this.emit({ type: "consolidation", status: "start", by: spec });
 
-    const rulesFile = rulesFileFor(spec.adapter, "consolidator");
-    if (adapter.editsFiles) {
+    const rulesFile = rulesFileFor(spec.adapter) ?? undefined;
+    if (adapter.editsFiles && rulesFile) {
       await atomicWrite(path.join(ws, rulesFile), consolidatorRules(spec.adapter));
       await Git.commitAll(ws, `Preparar consolidación · ${spec.label}`);
     }
@@ -857,6 +892,43 @@ export class DebateEngine {
 }
 
 // ---------- utilidades ----------
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function dedupeLastPerParticipant(turns: TurnRecord[]): TurnRecord[] {
+  const last = new Map<ParticipantKey, TurnRecord>();
+  for (const t of turns) last.set(t.participant, t);
+  return [...last.values()].sort((a, b) => a.number - b.number);
+}
+
+function attemptMatches(a: TurnAttempt, spec: ModelSpec): boolean {
+  const adapter = a.adapter === "kimi" ? "openai-compat" : a.adapter;
+  const sAdapter = spec.adapter === "kimi" ? "openai-compat" : spec.adapter;
+  return a.model === spec.model && adapter === sAdapter && (a.provider ?? spec.provider) === spec.provider;
+}
+
+/** Completa proveedor y modo de acceso en specs antiguos y traduce el adaptador heredado "kimi". */
+export function normalizeSpec(spec: ModelSpec): ModelSpec {
+  const s = { ...spec };
+  if (s.adapter === "kimi") {
+    s.adapter = "openai-compat";
+    s.provider ??= "digitalocean";
+  }
+  s.provider ??= providerForLegacy(s.adapter);
+  if (!s.access) {
+    if (s.adapter === "claude" || s.adapter === "codex") s.access = "cli-login";
+    else if (s.adapter === "gemini") s.access = "cli-key";
+    else if (s.adapter !== "fake") s.access = "api";
+  }
+  return s;
+}
 
 export function isProcessAlive(pid: number): boolean {
   try {

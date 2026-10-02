@@ -212,8 +212,99 @@ pre {
   font-weight: 600;
 }
 .pC {
+  color: #7ee0a1;
+  font-weight: 600;
+}
+.pD {
+  color: #ff8fb8;
+  font-weight: 600;
+}
+.pE {
+  color: #f5d76e;
+  font-weight: 600;
+}
+.pF {
+  color: #6fe3e3;
+  font-weight: 600;
+}
+.pG {
+  color: #ff9f80;
+  font-weight: 600;
+}
+.pH {
+  color: #a3c2ff;
+  font-weight: 600;
+}
+.pI {
+  color: #b8e986;
+  font-weight: 600;
+}
+.pJ {
+  color: #e0b0ff;
+  font-weight: 600;
+}
+.pCons {
   color: var(--c);
   font-weight: 600;
+}
+.okc {
+  color: var(--ok);
+}
+.errc {
+  color: var(--err);
+}
+.modal.wide {
+  width: 980px;
+  max-width: 96vw;
+}
+.picker {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.picker select {
+  max-width: 320px;
+}
+.participants {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.prow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.letter {
+  display: inline-flex;
+  width: 22px;
+  justify-content: center;
+}
+.provs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.prov {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.prov-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .muted {
   color: var(--fg-3);
