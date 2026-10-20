@@ -38,7 +38,7 @@ export interface AppConfig {
 export const DEFAULT_MODELS: ModelDefaults = {
   participants: [resolveSpecRef("claude-fable-5.1@claude-code:cli-key"), resolveSpecRef("gpt-6-astra@codex:cli-login")],
   substitute: resolveSpecRef("kimi-k3@digitalocean:api"),
-  consolidator: resolveSpecRef("gemini-3.1-pro@gemini-cli:cli-key"),
+  consolidator: resolveSpecRef("gemini-4-argon@google:api"),
   consolidatorAlt: resolveSpecRef("kimi-k3@digitalocean:api"),
 };
 

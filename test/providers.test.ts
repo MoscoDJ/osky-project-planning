@@ -10,7 +10,7 @@ import { OpenAICompatAdapter } from "../src/core/adapters/openai-compat.js";
 import { AnthropicAdapter } from "../src/core/adapters/anthropic.js";
 import { ReplicateAdapter } from "../src/core/adapters/replicate.js";
 import type { TurnRequest } from "../src/core/adapters/types.js";
-import { FAKE_MODELS, fakeParticipants } from "../src/core/config.js";
+import { DEFAULT_MODELS, FAKE_MODELS, fakeParticipants } from "../src/core/config.js";
 import { CATALOG, resolveSpecRef } from "../src/core/catalog.js";
 import { PROVIDERS, getProvider } from "../src/core/providers.js";
 import { readSecretsSync, secretStatus, setSecret } from "../src/core/secrets.js";
@@ -276,5 +276,6 @@ describe("claves y catálogo", () => {
     expect(PROVIDERS.find((p) => p.id === "gemini-cli")!.access).toEqual(["cli-key"]);
     expect(() => resolveSpecRef("modelo-mediano")).toThrow(/catálogo/);
     expect(resolveSpecRef("gpt-6-astra@codex:cli-login")).toMatchObject({ adapter: "codex", model: "gpt-6-astra", access: "cli-login" });
+    expect(DEFAULT_MODELS.consolidator).toMatchObject({ adapter: "openai-compat", provider: "google", model: "gemini-4-argon", effort: "high" });
   });
 });

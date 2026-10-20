@@ -5,6 +5,7 @@ import { getProvider } from "./providers.js";
  * Catálogo de modelos frontera (solo topes de gama) y las vías para usarlos.
  * Verificado el 2-oct-2026 contra las páginas oficiales de cada proveedor, el catálogo
  * público de OpenRouter y el listado de modelos de DigitalOcean con la clave del usuario.
+ * Gemini 4 Argon se agregó el 19-oct-2026.
  * Los precios son de la API oficial, en USD por millón de tokens de entrada / salida.
  */
 
@@ -80,13 +81,27 @@ export const CATALOG: CatalogModel[] = [
     ],
   },
   {
+    id: "gemini-4-argon",
+    label: "Gemini 4 Argon",
+    vendor: "Google",
+    priceIn: 2,
+    priceOut: 10,
+    contextK: 1048,
+    notes: "Tope de gama de Google (GA desde el 13-oct-2026). Precio promocional hasta el 30-nov-2026; desde el 1-dic sube a $4 / $20. Sin nivel gratuito.",
+    offerings: [
+      { provider: "google", access: "api", model: "gemini-4-argon", effort: "high" },
+      { provider: "openrouter", access: "api", model: "google/gemini-4-argon", effort: "high" },
+      { provider: "gemini-cli", access: "cli-key", model: "gemini-4-argon", note: "Experimental: Gemini CLI aún no registra Argon y avisa que no está optimizado para Gemini 4." },
+    ],
+  },
+  {
     id: "gemini-3.1-pro",
     label: "Gemini 3.1 Pro",
     vendor: "Google",
     priceIn: 2,
     priceOut: 12,
     contextK: 1048,
-    notes: "Tope de gama de Google (preview). Gemini 3.5 Pro aún no está publicado.",
+    notes: "Generación anterior a Gemini 4 Argon (preview). Se conserva por los debates y ajustes que ya lo usan.",
     offerings: [
       { provider: "gemini-cli", access: "cli-key", model: "gemini-3.1-pro-preview", note: "Gemini CLI ya no acepta login con cuenta de Google desde el 18-jun-2026; solo clave." },
       { provider: "google", access: "api", model: "gemini-3.1-pro-preview", effort: "high" },

@@ -3,6 +3,8 @@ name: Release
 # Compila Osky Project Planning en Linux, macOS y Windows y publica un Release.
 # Se dispara al empujar una etiqueta con el formato de versión vAAAA.M.D.N
 # (por ejemplo v2026.10.2.1: 2 de octubre de 2026, compilación 1), o a mano desde Actions.
+# A mano se puede elegir qué sistemas compilar; los demás se suben después desde cada equipo
+# con scripts/build-local.sh.
 
 on:
   push:
@@ -12,6 +14,10 @@ on:
       version:
         description: "Versión AAAA.M.D.N (por ejemplo 2026.10.2.1)"
         required: true
+      sistemas:
+        description: "Sistemas a compilar, separados por coma (linux,macos,windows)"
+        required: false
+        default: "linux,macos,windows"
 
 permissions:
   contents: write
@@ -21,21 +27,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  plan:
+    name: Elegir sistemas
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        shell: bash
+        env:
+          SISTEMAS: ${{ github.event.inputs.sistemas || 'linux,macos,windows' }}
+        run: |
+          ALL='[
+            {"key":"linux","name":"Linux","os":"ubuntu-latest","target":"--linux AppImage deb --x64"},
+            {"key":"macos","name":"macOS","os":"macos-latest","target":"--mac dmg zip --arm64 --x64"},
+            {"key":"windows","name":"Windows","os":"windows-latest","target":"--win nsis --x64"}
+          ]'
+          KEYS=$(echo "$SISTEMAS" | tr -d ' ' | tr 'A-Z' 'a-z' | jq -R -c 'split(",") | map(select(length > 0))')
+          MATRIX=$(echo "$ALL" | jq -c --argjson k "$KEYS" '{include: map(select(.key as $x | $k | index($x)))}')
+          if [ "$(echo "$MATRIX" | jq '.include | length')" = "0" ]; then
+            echo "Ningún sistema válido en '$SISTEMAS'"; exit 1
+          fi
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "$MATRIX"
+
   build:
     name: Compilar (${{ matrix.name }})
+    needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: Linux
-            os: ubuntu-latest
-            target: --linux AppImage deb --x64
-          - name: macOS
-            os: macos-latest
-            target: --mac dmg zip --arm64 --x64
-          - name: Windows
-            os: windows-latest
-            target: --win nsis --x64
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

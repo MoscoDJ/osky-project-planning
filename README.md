@@ -15,14 +15,18 @@ Cada participante es un modelo del catálogo de frontera más una **vía de acce
 | CLI con clave | Claude Code, Codex o Gemini CLI con clave de API | Igual que arriba, facturado a la API |
 | API | Anthropic (SDK oficial), OpenAI, Google, xAI, Moonshot, DeepSeek, Alibaba, Z.ai, OpenRouter, DigitalOcean, Replicate | Recibe el plan en el mensaje y lo devuelve completo |
 
-Catálogo (solo topes de gama, verificado el 2-oct-2026): Claude Fable 5.1, Claude Opus 5.5,
-GPT-6 Astra, Gemini 3.1 Pro, Grok 4.7, Kimi K3, DeepSeek V4 Pro, Qwen3.8 Max y GLM-5.3. Cada
+Catálogo (solo topes de gama, verificado el 2-oct-2026; Gemini 4 Argon desde el 19-oct-2026):
+Claude Fable 5.1, Claude Opus 5.5, GPT-6 Astra, Gemini 4 Argon, Grok 4.7, Kimi K3, DeepSeek V4
+Pro, Qwen3.8 Max y GLM-5.3 (Gemini 3.1 Pro sigue disponible como generación anterior). Cada
 uno lista sus vías disponibles (`osky-planning models`). En la app hay además "Otro modelo"
 para escribir un id a mano cuando salga un modelo nuevo.
 
 Notas de acceso:
 - Gemini CLI ya no acepta login de cuentas personales de Google desde el 18-jun-2026; se usa
   con `GEMINI_API_KEY`. La app también lee la clave de `~/.gemini/.env`.
+- Gemini 4 Argon consolida por defecto vía la API oficial de Google con la misma
+  `GEMINI_API_KEY`. En Gemini CLI queda como vía experimental: el CLI todavía no registra el
+  modelo y avisa que no está optimizado para Gemini 4.
 - Claude Fable 5.1 en Claude Code con login: en Pro solo con créditos de uso; en Max y en
   asientos premium de Team, incluido hasta el 50% del límite semanal.
 - Codex con clave usa `CODEX_API_KEY` solo para `codex exec`; no toca el login guardado.
@@ -78,6 +82,15 @@ compila en Linux, macOS y Windows, corre las pruebas en los tres sistemas y publ
 Release con AppImage, `.deb`, `.dmg` para Apple Silicon e Intel, y el instalador `.exe`.
 Por ahora macOS lleva firma ad-hoc sin notarizar y Windows va sin firma; las notas del
 release explican cómo abrirlos la primera vez.
+
+También se puede compilar cada sistema en su propio equipo. Desde Actions, el workflow
+Release se lanza a mano con la versión y los sistemas que deben compilarse ahí (por
+ejemplo solo `windows`); después, en cada equipo:
+
+```bash
+scripts/build-local.sh 2026.10.19.1              # compila este sistema y lo sube al Release
+scripts/build-local.sh 2026.10.19.1 --sin-subir  # solo compila, deja todo en release/
+```
 
 ## Requisitos
 
